@@ -1,0 +1,36 @@
+{
+  "name": "logseq-block-created-time",
+  "version": "0.1.0",
+  "description": "Shows the creation time of every visible block in Logseq DB graphs.",
+  "author": "Inchan Kang",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "npm run typecheck && vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "overrides": {
+    "dompurify": "3.4.12",
+    "lodash-es": "4.18.1"
+  },
+  "devDependencies": {
+    "@logseq/libs": "^0.3.4",
+    "@types/jsdom": "^21.1.7",
+    "jsdom": "^26.1.0",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5",
+    "vitest": "^3.2.4"
+  },
+  "logseq": {
+    "id": "logseq-block-created-time",
+    "title": "Block Created Time",
+    "main": "dist/index.html",
+    "icon": "./icon.svg"
+  }
+}
