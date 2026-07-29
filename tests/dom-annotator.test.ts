@@ -4,6 +4,7 @@ import {
   BADGE_CLASS,
   BlockTimestampAnnotator,
   STYLE_ID,
+  type TimestampFormat,
 } from "../src/dom-annotator";
 
 const UUID_A = "123e4567-e89b-42d3-a456-426614174000";
@@ -82,6 +83,30 @@ describe("BlockTimestampAnnotator", () => {
     expect(query).toHaveBeenCalledTimes(1);
     expect(query.mock.calls[0]?.[1]).toEqual([UUID_A, UUID_B]);
     expect(document.querySelectorAll(`.${BADGE_CLASS}`)).toHaveLength(3);
+  });
+
+  it("설정 getter가 변경되면 기존 배지의 형식을 다시 렌더링한다", async () => {
+    const createdAt = new Date(2026, 6, 19, 12, 34).getTime();
+    document.body.innerHTML = blockMarkup(UUID_A);
+    let timestampFormat: TimestampFormat = "0h 0m ago";
+    const annotator = new BlockTimestampAnnotator({
+      document,
+      query: async () => [[UUID_A, createdAt]],
+      timestampFormat: () => timestampFormat,
+      now: () => createdAt,
+    });
+
+    await annotator.scanNow();
+    expect(document.querySelector(`.${BADGE_CLASS}`)?.textContent).toBe(
+      "0d 0h",
+    );
+
+    timestampFormat = "YY-MM-DD-HH:mm";
+    annotator.refreshVisibleBadges();
+
+    expect(document.querySelector(`.${BADGE_CLASS}`)?.textContent).toBe(
+      "26-07-19-12:34",
+    );
   });
 
   it("version 및 variant 비트가 없는 Logseq DB 블록 식별자를 처리한다", async () => {

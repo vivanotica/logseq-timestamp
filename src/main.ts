@@ -1,8 +1,20 @@
 import "@logseq/libs";
-import { BlockTimestampAnnotator } from "./dom-annotator";
+import {
+  BlockTimestampAnnotator,
+  type TimestampFormat,
+} from "./dom-annotator";
+import { settingsSchema } from "./settings";
 
 const FILE_GRAPH_MESSAGE =
   "Block Created Time is available only in Logseq DB graphs.";
+const DEFAULT_TIMESTAMP_FORMAT: TimestampFormat = "0h 0m ago";
+
+function getTimestampFormat(): TimestampFormat {
+  const value = logseq.settings?.timestampFormat;
+  return value === "0h 0m ago" || value === "YY-MM-DD-HH:mm"
+    ? value
+    : DEFAULT_TIMESTAMP_FORMAT;
+}
 
 function getHostDocument(): Document {
   try {
@@ -23,6 +35,7 @@ async function main(): Promise<void> {
   const annotator = new BlockTimestampAnnotator({
     document: getHostDocument(),
     query: (query, uuids) => logseq.DB.datascriptQuery(query, uuids),
+    timestampFormat: getTimestampFormat,
     onError: (error) => {
       console.error("[Block Created Time]", error);
     },
@@ -33,12 +46,18 @@ async function main(): Promise<void> {
   const offGraphChanged = logseq.App.onCurrentGraphChanged(() => {
     annotator.reset();
   });
+  const offSettingsChanged = logseq.onSettingsChanged(() => {
+    annotator.refreshVisibleBadges();
+  });
 
   logseq.beforeunload(async () => {
     offGraphChanged?.();
+    offSettingsChanged();
     annotator.destroy();
   });
 }
+
+logseq.useSettingsSchema(settingsSchema);
 
 logseq.ready(main).catch((error) => {
   console.error("[Block Created Time] Failed to start the plugin.", error);

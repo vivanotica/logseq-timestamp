@@ -7,6 +7,8 @@ import { formatRelativeTime } from "./relative-time";
 export const BADGE_CLASS = "logseq-block-created-time";
 export const STYLE_ID = "logseq-block-created-time-style";
 
+export type TimestampFormat = "0h 0m ago" | "YY-MM-DD-HH:mm";
+
 const UUID_PATTERN =
   /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 const BLOCK_SELECTOR = ".ls-block[blockid]";
@@ -43,6 +45,7 @@ interface VisibleBlock {
 export interface BlockTimestampAnnotatorOptions {
   document: Document;
   query: DatascriptQuery;
+  timestampFormat?: () => TimestampFormat;
   now?: () => number;
   onError?: (error: unknown) => void;
 }
@@ -50,6 +53,7 @@ export interface BlockTimestampAnnotatorOptions {
 export class BlockTimestampAnnotator {
   readonly #document: Document;
   readonly #query: DatascriptQuery;
+  readonly #timestampFormat: () => TimestampFormat;
   readonly #now: () => number;
   readonly #onError: (error: unknown) => void;
   readonly #createdAt = new Map<string, number>();
@@ -64,6 +68,8 @@ export class BlockTimestampAnnotator {
   constructor(options: BlockTimestampAnnotatorOptions) {
     this.#document = options.document;
     this.#query = options.query;
+    this.#timestampFormat =
+      options.timestampFormat ?? (() => "0h 0m ago");
     this.#now = options.now ?? Date.now;
     this.#onError = options.onError ?? console.error;
   }
@@ -239,6 +245,7 @@ export class BlockTimestampAnnotator {
 
   #renderKnownBlocks(blocks: VisibleBlock[]): void {
     const now = this.#now();
+    const timestampFormat = this.#timestampFormat();
 
     for (const { uuid, row } of blocks) {
       const createdAt = this.#createdAt.get(uuid);
@@ -260,7 +267,18 @@ export class BlockTimestampAnnotator {
       }
 
       badge.dataset.blockUuid = uuid;
-      badge.textContent = formatRelativeTime(createdAt, now);
+
+      if (timestampFormat === "0h 0m ago") {
+        badge.textContent = formatRelativeTime(createdAt, now);
+      } else if (timestampFormat === "YY-MM-DD-HH:mm") {
+        const date = new Date(createdAt);
+        const year = date.getFullYear().toString().slice(-2);
+        const month = (date.getMonth() + 1).toString().padStart(2, "0");
+        const day = date.getDate().toString().padStart(2, "0");
+        const hours = date.getHours().toString().padStart(2, "0");
+        const minutes = date.getMinutes().toString().padStart(2, "0");
+        badge.textContent = `${year}-${month}-${day}-${hours}:${minutes}`;
+      }
     }
   }
 
