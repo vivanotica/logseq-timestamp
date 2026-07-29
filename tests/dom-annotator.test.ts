@@ -109,6 +109,48 @@ describe("BlockTimestampAnnotator", () => {
     );
   });
 
+  it("숨김 설정 시 Ctrl+Shift+T를 누르는 동안만 배지를 표시한다", async () => {
+    document.body.innerHTML = blockMarkup(UUID_A);
+    let hideTimestamp = true;
+    const annotator = new BlockTimestampAnnotator({
+      document,
+      query: async () => [[UUID_A, NOW]],
+      hideTimestampInDefaultView: () => hideTimestamp,
+      now: () => NOW,
+    });
+
+    annotator.start();
+    await annotator.scanNow();
+
+    const badge = document.querySelector<HTMLElement>(`.${BADGE_CLASS}`);
+    expect(badge?.hidden).toBe(true);
+
+    const keydown = new KeyboardEvent("keydown", {
+      code: "KeyT",
+      ctrlKey: true,
+      shiftKey: true,
+      cancelable: true,
+    });
+    window.dispatchEvent(keydown);
+    expect(keydown.defaultPrevented).toBe(true);
+    expect(badge?.hidden).toBe(false);
+
+    window.dispatchEvent(
+      new KeyboardEvent("keyup", {
+        code: "KeyT",
+        ctrlKey: true,
+        shiftKey: true,
+      }),
+    );
+    expect(badge?.hidden).toBe(true);
+
+    hideTimestamp = false;
+    annotator.refreshVisibleBadges();
+    expect(badge?.hidden).toBe(false);
+
+    annotator.destroy();
+  });
+
   it("version 및 variant 비트가 없는 Logseq DB 블록 식별자를 처리한다", async () => {
     document.body.innerHTML = blockMarkup(LOGSEQ_DB_UUID);
     const query = vi.fn(async () => [[LOGSEQ_DB_UUID, NOW]]);

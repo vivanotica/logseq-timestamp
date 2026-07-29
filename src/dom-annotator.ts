@@ -46,6 +46,7 @@ export interface BlockTimestampAnnotatorOptions {
   document: Document;
   query: DatascriptQuery;
   timestampFormat?: () => TimestampFormat;
+  hideTimestampInDefaultView?: () => boolean;
   now?: () => number;
   onError?: (error: unknown) => void;
 }
@@ -54,6 +55,7 @@ export class BlockTimestampAnnotator {
   readonly #document: Document;
   readonly #query: DatascriptQuery;
   readonly #timestampFormat: () => TimestampFormat;
+  readonly #hideTimestampInDefaultView: () => boolean;
   readonly #now: () => number;
   readonly #onError: (error: unknown) => void;
   readonly #createdAt = new Map<string, number>();
@@ -64,12 +66,15 @@ export class BlockTimestampAnnotator {
   #animationFrame: number | null = null;
   #generation = 0;
   #started = false;
+  #revealShortcutHeld = false;
 
   constructor(options: BlockTimestampAnnotatorOptions) {
     this.#document = options.document;
     this.#query = options.query;
     this.#timestampFormat =
       options.timestampFormat ?? (() => "0h 0m ago");
+    this.#hideTimestampInDefaultView =
+      options.hideTimestampInDefaultView ?? (() => false);
     this.#now = options.now ?? Date.now;
     this.#onError = options.onError ?? console.error;
   }
@@ -86,6 +91,9 @@ export class BlockTimestampAnnotator {
 
     this.#started = true;
     this.#mountStyle();
+    view.addEventListener("keydown", this.#onKeyDown, true);
+    view.addEventListener("keyup", this.#onKeyUp, true);
+    view.addEventListener("blur", this.#onWindowBlur);
 
     this.#observer = new view.MutationObserver(() => {
       this.#scheduleScan();
@@ -170,6 +178,11 @@ export class BlockTimestampAnnotator {
     this.#observer = null;
 
     const view = this.#document.defaultView;
+    if (view) {
+      view.removeEventListener("keydown", this.#onKeyDown, true);
+      view.removeEventListener("keyup", this.#onKeyUp, true);
+      view.removeEventListener("blur", this.#onWindowBlur);
+    }
     if (view && this.#refreshTimer !== null) {
       view.clearInterval(this.#refreshTimer);
     }
@@ -182,8 +195,48 @@ export class BlockTimestampAnnotator {
 
     this.#createdAt.clear();
     this.#inFlight.clear();
+    this.#revealShortcutHeld = false;
     this.#removeBadges();
     this.#document.getElementById(STYLE_ID)?.remove();
+  }
+
+  readonly #onKeyDown = (event: KeyboardEvent): void => {
+    if (
+      !this.#hideTimestampInDefaultView() ||
+      event.code !== "KeyT" ||
+      !event.ctrlKey ||
+      !event.shiftKey ||
+      event.altKey ||
+      event.metaKey
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    this.#setRevealShortcutHeld(true);
+  };
+
+  readonly #onKeyUp = (event: KeyboardEvent): void => {
+    if (
+      this.#revealShortcutHeld &&
+      (event.code === "KeyT" || !event.ctrlKey || !event.shiftKey)
+    ) {
+      this.#setRevealShortcutHeld(false);
+    }
+  };
+
+  readonly #onWindowBlur = (): void => {
+    this.#setRevealShortcutHeld(false);
+  };
+
+  #setRevealShortcutHeld(held: boolean): void {
+    if (this.#revealShortcutHeld === held) {
+      return;
+    }
+
+    this.#revealShortcutHeld = held;
+    this.refreshVisibleBadges();
   }
 
   #scheduleScan(): void {
@@ -246,6 +299,9 @@ export class BlockTimestampAnnotator {
   #renderKnownBlocks(blocks: VisibleBlock[]): void {
     const now = this.#now();
     const timestampFormat = this.#timestampFormat();
+    const hideTimestamps =
+      this.#hideTimestampInDefaultView() &&
+      !this.#revealShortcutHeld;
 
     for (const { uuid, row } of blocks) {
       const createdAt = this.#createdAt.get(uuid);
@@ -267,6 +323,7 @@ export class BlockTimestampAnnotator {
       }
 
       badge.dataset.blockUuid = uuid;
+      badge.hidden = hideTimestamps;
 
       if (timestampFormat === "0h 0m ago") {
         badge.textContent = formatRelativeTime(createdAt, now);

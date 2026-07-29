@@ -16,6 +16,10 @@ function getTimestampFormat(): TimestampFormat {
     : DEFAULT_TIMESTAMP_FORMAT;
 }
 
+function shouldHideTimestampInDefaultView(): boolean {
+  return logseq.settings?.hideTimestampInDefaultView === true;
+}
+
 function getHostDocument(): Document {
   try {
     return window.parent?.document ?? document;
@@ -36,6 +40,7 @@ async function main(): Promise<void> {
     document: getHostDocument(),
     query: (query, uuids) => logseq.DB.datascriptQuery(query, uuids),
     timestampFormat: getTimestampFormat,
+    hideTimestampInDefaultView: shouldHideTimestampInDefaultView,
     onError: (error) => {
       console.error("[Block Created Time]", error);
     },

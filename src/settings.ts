@@ -15,6 +15,6 @@ export const settingsSchema = [
     type: "boolean",
     default: false,
     title: "hide timestamp in default view",
-    description: "hold ctrl+shift+q to view timestamp",
+    description: "hold ctrl+shift+t to view timestamp",
   },
 ] satisfies Parameters<typeof logseq.useSettingsSchema>[0];
