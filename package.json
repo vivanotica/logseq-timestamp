@@ -2,7 +2,7 @@
   "name": "logseq-block-created-time",
   "version": "0.2.0",
   "description": "Shows the creation time of every visible block in Logseq DB graphs.",
-  "author": "Inchan Kang",
+  "author": "vivanotica",
   "license": "MIT",
   "type": "module",
   "engines": {
