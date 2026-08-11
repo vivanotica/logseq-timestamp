@@ -325,16 +325,21 @@ export class BlockTimestampAnnotator {
       badge.dataset.blockUuid = uuid;
       badge.hidden = hideTimestamps;
 
+      let text: string;
       if (timestampFormat === "0h 0m ago") {
-        badge.textContent = formatRelativeTime(createdAt, now);
-      } else if (timestampFormat === "YY-MM-DD-HH:mm") {
+        text = formatRelativeTime(createdAt, now);
+      } else {
         const date = new Date(createdAt);
         const year = date.getFullYear().toString().slice(-2);
         const month = (date.getMonth() + 1).toString().padStart(2, "0");
         const day = date.getDate().toString().padStart(2, "0");
         const hours = date.getHours().toString().padStart(2, "0");
         const minutes = date.getMinutes().toString().padStart(2, "0");
-        badge.textContent = `${year}-${month}-${day}-${hours}:${minutes}`;
+        text = `${year}-${month}-${day}-${hours}:${minutes}`;
+      }
+
+      if (badge.textContent !== text) {
+        badge.textContent = text;
       }
     }
   }

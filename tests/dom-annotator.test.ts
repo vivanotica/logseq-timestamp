@@ -70,6 +70,44 @@ describe("BlockTimestampAnnotator", () => {
     annotator.destroy();
   });
 
+  it("같은 배지 텍스트를 다시 렌더링해 observer 루프를 만들지 않는다", async () => {
+    document.body.innerHTML = blockMarkup(UUID_A);
+    const callbacks = new Map<number, FrameRequestCallback>();
+    let nextFrameId = 1;
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      const id = nextFrameId++;
+      callbacks.set(id, callback);
+      return id;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation((id) => {
+      callbacks.delete(id);
+    });
+    const annotator = createAnnotator(async () => [[UUID_A, NOW]]);
+
+    annotator.start();
+    expect(callbacks.size).toBe(1);
+
+    const runNextFrame = async () => {
+      const entry = callbacks.entries().next().value as
+        | [number, FrameRequestCallback]
+        | undefined;
+      expect(entry).toBeDefined();
+      const [id, callback] = entry!;
+      callbacks.delete(id);
+      callback(NOW);
+      await Promise.resolve();
+      await Promise.resolve();
+    };
+
+    await runNextFrame();
+    expect(callbacks.size).toBe(1);
+
+    await runNextFrame();
+    expect(callbacks.size).toBe(0);
+
+    annotator.destroy();
+  });
+
   it("동일 UUID의 여러 렌더링 인스턴스를 한 번 조회한다", async () => {
     document.body.innerHTML =
       blockMarkup(UUID_A) + blockMarkup(UUID_A) + blockMarkup(UUID_B);
