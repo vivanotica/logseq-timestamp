@@ -1,24 +1,10 @@
 import "@logseq/libs";
-import {
-  BlockTimestampAnnotator,
-  type TimestampFormat,
-} from "./dom-annotator";
-import { settingsSchema } from "./settings";
+import { BlockTimestampAnnotator } from "./dom-annotator";
 
 const FILE_GRAPH_MESSAGE =
   "Block Created Time is available only in Logseq DB graphs.";
-const DEFAULT_TIMESTAMP_FORMAT: TimestampFormat = "0h 0m ago";
-
-function getTimestampFormat(): TimestampFormat {
-  const value = logseq.settings?.timestampFormat;
-  return value === "0h 0m ago" || value === "YY-MM-DD-HH:mm"
-    ? value
-    : DEFAULT_TIMESTAMP_FORMAT;
-}
-
-function shouldHideTimestampInDefaultView(): boolean {
-  return logseq.settings?.hideTimestampInDefaultView === true;
-}
+const TOOLBAR_ITEM_KEY = "block-created-time-toggle";
+const TOOLBAR_MODEL_KEY = "toggleBlockCreatedTime";
 
 function getHostDocument(): Document {
   try {
@@ -39,8 +25,6 @@ async function main(): Promise<void> {
   const annotator = new BlockTimestampAnnotator({
     document: getHostDocument(),
     query: (query, uuids) => logseq.DB.datascriptQuery(query, uuids),
-    timestampFormat: getTimestampFormat,
-    hideTimestampInDefaultView: shouldHideTimestampInDefaultView,
     onError: (error) => {
       console.error("[Block Created Time]", error);
     },
@@ -48,21 +32,35 @@ async function main(): Promise<void> {
 
   annotator.start();
 
+  logseq.provideModel({
+    [TOOLBAR_MODEL_KEY](element: HTMLElement) {
+      const visible = annotator.toggleVisibility();
+      element.setAttribute("aria-pressed", String(visible));
+      element.setAttribute(
+        "title",
+        visible ? "Hide block timestamps" : "Show block timestamps",
+      );
+    },
+  });
+  logseq.App.registerUIItem("toolbar", {
+    key: TOOLBAR_ITEM_KEY,
+    template: `
+      <a class="button" data-on-click="${TOOLBAR_MODEL_KEY}"
+         title="Hide block timestamps" aria-label="Toggle block timestamps"
+         aria-pressed="true">
+        <i class="ti ti-clock"></i>
+      </a>
+    `,
+  });
+
   const offGraphChanged = logseq.App.onCurrentGraphChanged(() => {
     annotator.reset();
   });
-  const offSettingsChanged = logseq.onSettingsChanged(() => {
-    annotator.refreshVisibleBadges();
-  });
-
   logseq.beforeunload(async () => {
     offGraphChanged?.();
-    offSettingsChanged();
     annotator.destroy();
   });
 }
-
-logseq.useSettingsSchema(settingsSchema);
 
 logseq.ready(main).catch((error) => {
   console.error("[Block Created Time] Failed to start the plugin.", error);

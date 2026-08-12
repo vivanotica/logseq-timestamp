@@ -2,12 +2,10 @@ import {
   fetchCreatedAtForUuids,
   type DatascriptQuery,
 } from "./created-at";
-import { formatRelativeTime } from "./relative-time";
 
 export const BADGE_CLASS = "logseq-block-created-time";
 export const STYLE_ID = "logseq-block-created-time-style";
-
-export type TimestampFormat = "0h 0m ago" | "YY-MM-DD-HH:mm";
+const LEFT_LAYER_CLASS = "logseq-block-created-time-left-layer";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
@@ -23,9 +21,10 @@ const REFRESH_INTERVAL_MS = 60_000;
 
 const BADGE_CSS = `
 .${BADGE_CLASS} {
-  align-self: center;
-  flex: 0 0 auto;
-  margin-inline-start: 0.3rem;
+  position: absolute;
+  top: var(--logseq-block-created-time-top);
+  inset-inline-end: calc(100% + 0.75rem);
+  z-index: 1;
   color: var(--ls-secondary-text-color, currentColor);
   font-size: 0.72em;
   font-weight: 400;
@@ -34,6 +33,12 @@ const BADGE_CSS = `
   pointer-events: none;
   user-select: none;
   white-space: nowrap;
+  margin: 0;
+  transform: translateY(-50%);
+}
+
+.${LEFT_LAYER_CLASS} {
+  position: relative;
 }
 `;
 
@@ -45,37 +50,28 @@ interface VisibleBlock {
 export interface BlockTimestampAnnotatorOptions {
   document: Document;
   query: DatascriptQuery;
-  timestampFormat?: () => TimestampFormat;
-  hideTimestampInDefaultView?: () => boolean;
-  now?: () => number;
   onError?: (error: unknown) => void;
 }
 
 export class BlockTimestampAnnotator {
   readonly #document: Document;
   readonly #query: DatascriptQuery;
-  readonly #timestampFormat: () => TimestampFormat;
-  readonly #hideTimestampInDefaultView: () => boolean;
-  readonly #now: () => number;
   readonly #onError: (error: unknown) => void;
   readonly #createdAt = new Map<string, number>();
   readonly #inFlight = new Set<string>();
+  readonly #badgesByRow = new WeakMap<HTMLElement, HTMLElement>();
 
   #observer: MutationObserver | null = null;
+  #resizeObserver: ResizeObserver | null = null;
   #refreshTimer: number | null = null;
   #animationFrame: number | null = null;
   #generation = 0;
   #started = false;
-  #revealShortcutHeld = false;
+  #badgesVisible = true;
 
   constructor(options: BlockTimestampAnnotatorOptions) {
     this.#document = options.document;
     this.#query = options.query;
-    this.#timestampFormat =
-      options.timestampFormat ?? (() => "0h 0m ago");
-    this.#hideTimestampInDefaultView =
-      options.hideTimestampInDefaultView ?? (() => false);
-    this.#now = options.now ?? Date.now;
     this.#onError = options.onError ?? console.error;
   }
 
@@ -86,14 +82,12 @@ export class BlockTimestampAnnotator {
 
     const view = this.#document.defaultView;
     if (!view || !this.#document.body) {
-      throw new Error("Logseq 호스트 문서를 찾을 수 없습니다.");
+      throw new Error("Could not find the Logseq host document.");
     }
 
     this.#started = true;
     this.#mountStyle();
-    view.addEventListener("keydown", this.#onKeyDown, true);
-    view.addEventListener("keyup", this.#onKeyUp, true);
-    view.addEventListener("blur", this.#onWindowBlur);
+    view.addEventListener("resize", this.#onWindowResize);
 
     this.#observer = new view.MutationObserver(() => {
       this.#scheduleScan();
@@ -102,6 +96,12 @@ export class BlockTimestampAnnotator {
       childList: true,
       subtree: true,
     });
+
+    if (view.ResizeObserver) {
+      this.#resizeObserver = new view.ResizeObserver(() => {
+        this.#scheduleScan();
+      });
+    }
 
     this.#refreshTimer = view.setInterval(() => {
       this.refreshVisibleBadges();
@@ -163,6 +163,12 @@ export class BlockTimestampAnnotator {
     this.#renderKnownBlocks(this.#getVisibleBlocks());
   }
 
+  toggleVisibility(): boolean {
+    this.#badgesVisible = !this.#badgesVisible;
+    this.refreshVisibleBadges();
+    return this.#badgesVisible;
+  }
+
   reset(): void {
     this.#generation += 1;
     this.#createdAt.clear();
@@ -176,12 +182,12 @@ export class BlockTimestampAnnotator {
     this.#started = false;
     this.#observer?.disconnect();
     this.#observer = null;
+    this.#resizeObserver?.disconnect();
+    this.#resizeObserver = null;
 
     const view = this.#document.defaultView;
     if (view) {
-      view.removeEventListener("keydown", this.#onKeyDown, true);
-      view.removeEventListener("keyup", this.#onKeyUp, true);
-      view.removeEventListener("blur", this.#onWindowBlur);
+      view.removeEventListener("resize", this.#onWindowResize);
     }
     if (view && this.#refreshTimer !== null) {
       view.clearInterval(this.#refreshTimer);
@@ -195,49 +201,14 @@ export class BlockTimestampAnnotator {
 
     this.#createdAt.clear();
     this.#inFlight.clear();
-    this.#revealShortcutHeld = false;
+    this.#badgesVisible = true;
     this.#removeBadges();
     this.#document.getElementById(STYLE_ID)?.remove();
   }
 
-  readonly #onKeyDown = (event: KeyboardEvent): void => {
-    if (
-      !this.#hideTimestampInDefaultView() ||
-      event.code !== "KeyT" ||
-      !event.ctrlKey ||
-      !event.shiftKey ||
-      event.altKey ||
-      event.metaKey
-    ) {
-      return;
-    }
-
-    event.preventDefault();
-    event.stopPropagation();
-    this.#setRevealShortcutHeld(true);
+  readonly #onWindowResize = (): void => {
+    this.#scheduleScan();
   };
-
-  readonly #onKeyUp = (event: KeyboardEvent): void => {
-    if (
-      this.#revealShortcutHeld &&
-      (event.code === "KeyT" || !event.ctrlKey || !event.shiftKey)
-    ) {
-      this.#setRevealShortcutHeld(false);
-    }
-  };
-
-  readonly #onWindowBlur = (): void => {
-    this.#setRevealShortcutHeld(false);
-  };
-
-  #setRevealShortcutHeld(held: boolean): void {
-    if (this.#revealShortcutHeld === held) {
-      return;
-    }
-
-    this.#revealShortcutHeld = held;
-    this.refreshVisibleBadges();
-  }
 
   #scheduleScan(): void {
     const view = this.#document.defaultView;
@@ -297,11 +268,7 @@ export class BlockTimestampAnnotator {
   }
 
   #renderKnownBlocks(blocks: VisibleBlock[]): void {
-    const now = this.#now();
-    const timestampFormat = this.#timestampFormat();
-    const hideTimestamps =
-      this.#hideTimestampInDefaultView() &&
-      !this.#revealShortcutHeld;
+    const renderedBadges = new Set<HTMLElement>();
 
     for (const { uuid, row } of blocks) {
       const createdAt = this.#createdAt.get(uuid);
@@ -309,7 +276,7 @@ export class BlockTimestampAnnotator {
         continue;
       }
 
-      let badge = [...row.children].find(
+      let badge = this.#badgesByRow.get(row) ?? [...row.children].find(
         (child): child is HTMLElement =>
           this.#isHostHTMLElement(child) &&
           child.classList.contains(BADGE_CLASS),
@@ -319,29 +286,83 @@ export class BlockTimestampAnnotator {
         badge = this.#document.createElement("span");
         badge.className = BADGE_CLASS;
         badge.setAttribute("aria-hidden", "true");
-        row.append(badge);
+        this.#badgesByRow.set(row, badge);
       }
+
+      this.#placeBadgeInLayer(row, badge);
 
       badge.dataset.blockUuid = uuid;
-      badge.hidden = hideTimestamps;
+      badge.hidden = !this.#badgesVisible;
 
-      let text: string;
-      if (timestampFormat === "0h 0m ago") {
-        text = formatRelativeTime(createdAt, now);
-      } else {
-        const date = new Date(createdAt);
-        const year = date.getFullYear().toString().slice(-2);
-        const month = (date.getMonth() + 1).toString().padStart(2, "0");
-        const day = date.getDate().toString().padStart(2, "0");
-        const hours = date.getHours().toString().padStart(2, "0");
-        const minutes = date.getMinutes().toString().padStart(2, "0");
-        text = `${year}-${month}-${day}-${hours}:${minutes}`;
-      }
+      const date = new Date(createdAt);
+      const hours = date.getHours().toString().padStart(2, "0");
+      const minutes = date.getMinutes().toString().padStart(2, "0");
+      const text = `${hours}:${minutes}`;
 
       if (badge.textContent !== text) {
         badge.textContent = text;
       }
+      renderedBadges.add(badge);
     }
+
+    this.#removeStaleBadges(renderedBadges);
+    this.#removeUnusedLayers();
+  }
+
+  #placeBadgeInLayer(row: HTMLElement, badge: HTMLElement): void {
+    const block = row.closest<HTMLElement>(BLOCK_SELECTOR);
+    if (!block) {
+      return;
+    }
+
+    let rootBlock = block;
+    let parentBlock = rootBlock.parentElement?.closest<HTMLElement>(
+      BLOCK_SELECTOR,
+    );
+    while (parentBlock) {
+      rootBlock = parentBlock;
+      parentBlock = rootBlock.parentElement?.closest<HTMLElement>(
+        BLOCK_SELECTOR,
+      );
+    }
+
+    const layer =
+      row.closest<HTMLElement>(".journal-item") ??
+      rootBlock.parentElement ??
+      this.#document.body;
+    layer.classList.add(LEFT_LAYER_CLASS);
+    this.#resizeObserver?.observe(layer);
+    if (badge.parentElement !== layer) {
+      layer.append(badge);
+    }
+
+    const rowRect = row.getBoundingClientRect();
+    const layerRect = layer.getBoundingClientRect();
+    badge.style.setProperty(
+      "--logseq-block-created-time-top",
+      `${rowRect.top - layerRect.top + rowRect.height / 2}px`,
+    );
+  }
+
+  #removeStaleBadges(renderedBadges: ReadonlySet<HTMLElement>): void {
+    this.#document
+      .querySelectorAll<HTMLElement>(`.${BADGE_CLASS}`)
+      .forEach((badge) => {
+        if (!renderedBadges.has(badge)) {
+          badge.remove();
+        }
+      });
+  }
+
+  #removeUnusedLayers(): void {
+    this.#document
+      .querySelectorAll<HTMLElement>(`.${LEFT_LAYER_CLASS}`)
+      .forEach((layer) => {
+        if (!layer.querySelector(`.${BADGE_CLASS}`)) {
+          this.#resizeObserver?.unobserve(layer);
+          layer.classList.remove(LEFT_LAYER_CLASS);
+        }
+      });
   }
 
   #mountStyle(): void {
@@ -361,6 +382,12 @@ export class BlockTimestampAnnotator {
   }
 
   #removeBadges(): void {
+    this.#document
+      .querySelectorAll<HTMLElement>(`.${LEFT_LAYER_CLASS}`)
+      .forEach((layer) => {
+        this.#resizeObserver?.unobserve(layer);
+        layer.classList.remove(LEFT_LAYER_CLASS);
+      });
     this.#document
       .querySelectorAll<HTMLElement>(`.${BADGE_CLASS}`)
       .forEach((badge) => badge.remove());

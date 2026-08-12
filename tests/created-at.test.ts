@@ -6,13 +6,13 @@ import {
   parseCreatedAtRows,
 } from "../src/created-at";
 
-describe("created-at 조회", () => {
-  it("DB UUID 값을 DOM blockid 문자열과 비교한다", () => {
+describe("created-at queries", () => {
+  it("compares DB UUID values with DOM blockid strings", () => {
     expect(CREATED_AT_QUERY).toContain("[(str ?uuid) ?uuid-string]");
     expect(CREATED_AT_QUERY).toContain(":in $ [?uuid-string ...]");
   });
 
-  it("UUID를 입력 순서대로 중복 제거한다", () => {
+  it("deduplicates UUIDs while preserving input order", () => {
     expect(dedupeUuids(["a", "b", "a", "c", "b"])).toEqual([
       "a",
       "b",
@@ -20,7 +20,7 @@ describe("created-at 조회", () => {
     ]);
   });
 
-  it("유효한 행만 timestamp 맵으로 변환한다", () => {
+  it("converts only valid rows into a timestamp map", () => {
     expect(
       [...parseCreatedAtRows([
         ["a", 100],
@@ -36,7 +36,7 @@ describe("created-at 조회", () => {
     ]);
   });
 
-  it("중복 UUID를 제거하고 정해진 크기로 묶어 조회한다", async () => {
+  it("deduplicates UUIDs and queries them in fixed-size batches", async () => {
     const query = vi.fn(async (_query: string, uuids: readonly string[]) =>
       uuids.map((uuid, index) => [uuid, 1_000 + index]),
     );
@@ -53,7 +53,7 @@ describe("created-at 조회", () => {
     expect([...result.keys()]).toEqual(["a", "b", "c"]);
   });
 
-  it("조회할 UUID가 없으면 DB를 호출하지 않는다", async () => {
+  it("does not call the database when there are no UUIDs to query", async () => {
     const query = vi.fn();
 
     await expect(fetchCreatedAtForUuids(query, [])).resolves.toEqual(
