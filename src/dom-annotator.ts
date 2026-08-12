@@ -84,14 +84,9 @@ export class BlockTimestampAnnotator {
 
     this.#started = true;
     this.#mountStyle();
-    view.addEventListener("resize", this.#onWindowResize);
 
     this.#observer = new view.MutationObserver(() => {
       this.#scheduleScan();
-    });
-    this.#observer.observe(this.#document.body, {
-      childList: true,
-      subtree: true,
     });
 
     if (view.ResizeObserver) {
@@ -100,6 +95,7 @@ export class BlockTimestampAnnotator {
       });
     }
 
+    this.#startObserving();
     this.#scheduleScan();
   }
 
@@ -148,6 +144,9 @@ export class BlockTimestampAnnotator {
       for (const uuid of missingUuids) {
         this.#inFlight.delete(uuid);
       }
+      if (generation !== this.#generation) {
+        this.#scheduleScan();
+      }
     }
   }
 
@@ -157,7 +156,16 @@ export class BlockTimestampAnnotator {
 
   toggleVisibility(): boolean {
     this.#badgesVisible = !this.#badgesVisible;
-    this.refreshVisibleBadges();
+    this.#setBadgesHidden(!this.#badgesVisible);
+
+    if (this.#badgesVisible) {
+      this.#startObserving();
+      this.#scheduleScan();
+    } else {
+      this.#generation += 1;
+      this.#stopObserving();
+    }
+
     return this.#badgesVisible;
   }
 
@@ -172,19 +180,9 @@ export class BlockTimestampAnnotator {
   destroy(): void {
     this.#generation += 1;
     this.#started = false;
-    this.#observer?.disconnect();
+    this.#stopObserving();
     this.#observer = null;
-    this.#resizeObserver?.disconnect();
     this.#resizeObserver = null;
-
-    const view = this.#document.defaultView;
-    if (view) {
-      view.removeEventListener("resize", this.#onWindowResize);
-    }
-    if (view && this.#animationFrame !== null) {
-      view.cancelAnimationFrame(this.#animationFrame);
-    }
-    this.#animationFrame = null;
 
     this.#createdAt.clear();
     this.#inFlight.clear();
@@ -197,9 +195,51 @@ export class BlockTimestampAnnotator {
     this.#scheduleScan();
   };
 
+  #startObserving(): void {
+    if (!this.#started || !this.#badgesVisible) {
+      return;
+    }
+
+    const view = this.#document.defaultView;
+    if (!view || !this.#document.body) {
+      return;
+    }
+
+    view.addEventListener("resize", this.#onWindowResize);
+    this.#observer?.observe(this.#document.body, {
+      childList: true,
+      subtree: true,
+    });
+  }
+
+  #stopObserving(): void {
+    this.#observer?.disconnect();
+    this.#resizeObserver?.disconnect();
+
+    const view = this.#document.defaultView;
+    view?.removeEventListener("resize", this.#onWindowResize);
+    if (view && this.#animationFrame !== null) {
+      view.cancelAnimationFrame(this.#animationFrame);
+    }
+    this.#animationFrame = null;
+  }
+
+  #setBadgesHidden(hidden: boolean): void {
+    this.#document
+      .querySelectorAll<HTMLElement>(`.${BADGE_CLASS}`)
+      .forEach((badge) => {
+        badge.hidden = hidden;
+      });
+  }
+
   #scheduleScan(): void {
     const view = this.#document.defaultView;
-    if (!this.#started || !view || this.#animationFrame !== null) {
+    if (
+      !this.#started ||
+      !this.#badgesVisible ||
+      !view ||
+      this.#animationFrame !== null
+    ) {
       return;
     }
 

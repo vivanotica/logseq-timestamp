@@ -140,8 +140,20 @@ describe("BlockTimestampAnnotator", () => {
     await runNextFrame();
     expect(callbacks.size).toBe(0);
 
+    expect(annotator.toggleVisibility()).toBe(false);
+    window.dispatchEvent(new Event("resize"));
+    document.body.append(document.createElement("div"));
+    await Promise.resolve();
+    expect(callbacks.size).toBe(0);
+
+    expect(annotator.toggleVisibility()).toBe(true);
+    expect(callbacks.size).toBe(1);
+
+    await runNextFrame();
+    expect(callbacks.size).toBe(0);
+
     annotator.destroy();
-    expect(disconnect).toHaveBeenCalledTimes(1);
+    expect(disconnect).toHaveBeenCalledTimes(2);
   });
 
   it("queries multiple rendered instances of the same UUID only once", async () => {
