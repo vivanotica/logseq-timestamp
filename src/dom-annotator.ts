@@ -45,6 +45,11 @@ interface VisibleBlock {
   row: HTMLElement;
 }
 
+interface PositionUpdate {
+  badge: HTMLElement;
+  top: string;
+}
+
 export interface BlockTimestampAnnotatorOptions {
   document: Document;
   query: DatascriptQuery;
@@ -156,12 +161,47 @@ export class BlockTimestampAnnotator {
   }
 
   updatePositions(): void {
+    const connectedEntries: Array<[HTMLElement, HTMLElement]> = [];
     for (const [row, badge] of this.#badgesByRow) {
       if (!row.isConnected || !badge.isConnected) {
         this.#badgesByRow.delete(row);
         continue;
       }
-      this.#updateBadgePosition(row, badge);
+      connectedEntries.push([row, badge]);
+    }
+
+    const layerTops = new Map<HTMLElement, number>();
+    for (const [, badge] of connectedEntries) {
+      const layer = badge.parentElement;
+      if (layer && !layerTops.has(layer)) {
+        layerTops.set(layer, layer.getBoundingClientRect().top);
+      }
+    }
+
+    const updates: PositionUpdate[] = [];
+    for (const [row, badge] of connectedEntries) {
+      const layer = badge.parentElement;
+      if (!layer) {
+        continue;
+      }
+      const layerTop = layerTops.get(layer);
+      if (layerTop === undefined) {
+        continue;
+      }
+      const rowRect = row.getBoundingClientRect();
+      updates.push({
+        badge,
+        top: `${rowRect.top - layerTop + rowRect.height / 2}px`,
+      });
+    }
+
+    for (const { badge, top } of updates) {
+      if (
+        badge.style.getPropertyValue("--logseq-block-created-time-top") !==
+        top
+      ) {
+        badge.style.setProperty("--logseq-block-created-time-top", top);
+      }
     }
   }
 
@@ -371,6 +411,7 @@ export class BlockTimestampAnnotator {
 
     this.#removeStaleBadges(renderedBadges);
     this.#removeUnusedLayers();
+    this.updatePositions();
   }
 
   #placeBadgeInLayer(row: HTMLElement, badge: HTMLElement): void {
@@ -398,23 +439,6 @@ export class BlockTimestampAnnotator {
     this.#resizeObserver?.observe(layer);
     if (badge.parentElement !== layer) {
       layer.append(badge);
-    }
-
-    this.#updateBadgePosition(row, badge);
-  }
-
-  #updateBadgePosition(row: HTMLElement, badge: HTMLElement): void {
-    const layer = badge.parentElement;
-    if (!layer) {
-      return;
-    }
-    const rowRect = row.getBoundingClientRect();
-    const layerRect = layer.getBoundingClientRect();
-    const top = `${rowRect.top - layerRect.top + rowRect.height / 2}px`;
-    if (
-      badge.style.getPropertyValue("--logseq-block-created-time-top") !== top
-    ) {
-      badge.style.setProperty("--logseq-block-created-time-top", top);
     }
   }
 
