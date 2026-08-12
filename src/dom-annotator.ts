@@ -57,11 +57,12 @@ export class BlockTimestampAnnotator {
   readonly #onError: (error: unknown) => void;
   readonly #createdAt = new Map<string, number>();
   readonly #inFlight = new Set<string>();
-  readonly #badgesByRow = new WeakMap<HTMLElement, HTMLElement>();
+  readonly #badgesByRow = new Map<HTMLElement, HTMLElement>();
 
   #observer: MutationObserver | null = null;
   #resizeObserver: ResizeObserver | null = null;
   #animationFrame: number | null = null;
+  #scheduledWork: "scan" | "positions" | null = null;
   #generation = 0;
   #started = false;
   #badgesVisible = true;
@@ -91,7 +92,7 @@ export class BlockTimestampAnnotator {
 
     if (view.ResizeObserver) {
       this.#resizeObserver = new view.ResizeObserver(() => {
-        this.#scheduleScan();
+        this.#schedulePositionUpdate();
       });
     }
 
@@ -154,6 +155,16 @@ export class BlockTimestampAnnotator {
     this.#renderKnownBlocks(this.#getVisibleBlocks());
   }
 
+  updatePositions(): void {
+    for (const [row, badge] of this.#badgesByRow) {
+      if (!row.isConnected || !badge.isConnected) {
+        this.#badgesByRow.delete(row);
+        continue;
+      }
+      this.#updateBadgePosition(row, badge);
+    }
+  }
+
   toggleVisibility(): boolean {
     this.#badgesVisible = !this.#badgesVisible;
     this.#setBadgesHidden(!this.#badgesVisible);
@@ -192,7 +203,7 @@ export class BlockTimestampAnnotator {
   }
 
   readonly #onWindowResize = (): void => {
-    this.#scheduleScan();
+    this.#schedulePositionUpdate();
   };
 
   #startObserving(): void {
@@ -222,6 +233,7 @@ export class BlockTimestampAnnotator {
       view.cancelAnimationFrame(this.#animationFrame);
     }
     this.#animationFrame = null;
+    this.#scheduledWork = null;
   }
 
   #setBadgesHidden(hidden: boolean): void {
@@ -238,14 +250,39 @@ export class BlockTimestampAnnotator {
       !this.#started ||
       !this.#badgesVisible ||
       !view ||
-      this.#animationFrame !== null
+      this.#scheduledWork === "scan"
     ) {
       return;
     }
 
+    if (this.#animationFrame !== null) {
+      view.cancelAnimationFrame(this.#animationFrame);
+    }
+
+    this.#scheduledWork = "scan";
     this.#animationFrame = view.requestAnimationFrame(() => {
       this.#animationFrame = null;
+      this.#scheduledWork = null;
       void this.scanNow();
+    });
+  }
+
+  #schedulePositionUpdate(): void {
+    const view = this.#document.defaultView;
+    if (
+      !this.#started ||
+      !this.#badgesVisible ||
+      !view ||
+      this.#scheduledWork !== null
+    ) {
+      return;
+    }
+
+    this.#scheduledWork = "positions";
+    this.#animationFrame = view.requestAnimationFrame(() => {
+      this.#animationFrame = null;
+      this.#scheduledWork = null;
+      this.updatePositions();
     });
   }
 
@@ -363,12 +400,22 @@ export class BlockTimestampAnnotator {
       layer.append(badge);
     }
 
+    this.#updateBadgePosition(row, badge);
+  }
+
+  #updateBadgePosition(row: HTMLElement, badge: HTMLElement): void {
+    const layer = badge.parentElement;
+    if (!layer) {
+      return;
+    }
     const rowRect = row.getBoundingClientRect();
     const layerRect = layer.getBoundingClientRect();
-    badge.style.setProperty(
-      "--logseq-block-created-time-top",
-      `${rowRect.top - layerRect.top + rowRect.height / 2}px`,
-    );
+    const top = `${rowRect.top - layerRect.top + rowRect.height / 2}px`;
+    if (
+      badge.style.getPropertyValue("--logseq-block-created-time-top") !== top
+    ) {
+      badge.style.setProperty("--logseq-block-created-time-top", top);
+    }
   }
 
   #removeStaleBadges(renderedBadges: ReadonlySet<HTMLElement>): void {
@@ -376,6 +423,12 @@ export class BlockTimestampAnnotator {
       .querySelectorAll<HTMLElement>(`.${BADGE_CLASS}`)
       .forEach((badge) => {
         if (!renderedBadges.has(badge)) {
+          for (const [row, mappedBadge] of this.#badgesByRow) {
+            if (mappedBadge === badge) {
+              this.#badgesByRow.delete(row);
+              break;
+            }
+          }
           badge.remove();
         }
       });
@@ -418,5 +471,6 @@ export class BlockTimestampAnnotator {
     this.#document
       .querySelectorAll<HTMLElement>(`.${BADGE_CLASS}`)
       .forEach((badge) => badge.remove());
+    this.#badgesByRow.clear();
   }
 }

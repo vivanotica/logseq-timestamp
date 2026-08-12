@@ -127,18 +127,21 @@ describe("BlockTimestampAnnotator", () => {
     await runNextFrame();
     expect(callbacks.size).toBe(0);
     expect(observe).toHaveBeenCalled();
+    const querySelectorAll = vi.spyOn(document, "querySelectorAll");
 
     resizeCallback?.([], {} as ResizeObserver);
     expect(callbacks.size).toBe(1);
 
     await runNextFrame();
     expect(callbacks.size).toBe(0);
+    expect(querySelectorAll).not.toHaveBeenCalled();
 
     window.dispatchEvent(new Event("resize"));
     expect(callbacks.size).toBe(1);
 
     await runNextFrame();
     expect(callbacks.size).toBe(0);
+    expect(querySelectorAll).not.toHaveBeenCalled();
 
     expect(annotator.toggleVisibility()).toBe(false);
     window.dispatchEvent(new Event("resize"));
