@@ -17,8 +17,6 @@ const EXCLUDED_ANCESTORS = [
   ".lsp-hook-ui-slot",
   "[data-injected-ui]",
 ].join(", ");
-const REFRESH_INTERVAL_MS = 60_000;
-
 const BADGE_CSS = `
 .${BADGE_CLASS} {
   position: absolute;
@@ -63,7 +61,6 @@ export class BlockTimestampAnnotator {
 
   #observer: MutationObserver | null = null;
   #resizeObserver: ResizeObserver | null = null;
-  #refreshTimer: number | null = null;
   #animationFrame: number | null = null;
   #generation = 0;
   #started = false;
@@ -102,11 +99,6 @@ export class BlockTimestampAnnotator {
         this.#scheduleScan();
       });
     }
-
-    this.#refreshTimer = view.setInterval(() => {
-      this.refreshVisibleBadges();
-      this.#scheduleScan();
-    }, REFRESH_INTERVAL_MS);
 
     this.#scheduleScan();
   }
@@ -189,11 +181,6 @@ export class BlockTimestampAnnotator {
     if (view) {
       view.removeEventListener("resize", this.#onWindowResize);
     }
-    if (view && this.#refreshTimer !== null) {
-      view.clearInterval(this.#refreshTimer);
-    }
-    this.#refreshTimer = null;
-
     if (view && this.#animationFrame !== null) {
       view.cancelAnimationFrame(this.#animationFrame);
     }
