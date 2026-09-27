@@ -26,6 +26,7 @@ const BADGE_CSS = `
   color: var(--ls-secondary-text-color, currentColor);
   font-size: 0.72em;
   font-weight: 400;
+  font-variant-numeric: tabular-nums;
   line-height: 1;
   opacity: 0.55;
   pointer-events: none;
