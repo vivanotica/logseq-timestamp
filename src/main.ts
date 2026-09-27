@@ -1,5 +1,6 @@
 import "@logseq/libs";
 import { BlockTimestampAnnotator } from "./dom-annotator";
+import { settingsSchema } from "./settings";
 
 const FILE_GRAPH_MESSAGE =
   "Block Created Time is available only in Logseq DB graphs.";
@@ -62,6 +63,6 @@ async function main(): Promise<void> {
   });
 }
 
-logseq.ready(main).catch((error) => {
+logseq.useSettingsSchema(settingsSchema).ready(main).catch((error) => {
   console.error("[Block Created Time] Failed to start the plugin.", error);
 });
