@@ -1,8 +1,5 @@
-<p align="center">
-  <img src="./icon.svg" width="128" alt="Block Created Time icon">
-</p>
-
 # Block Created Time
+<img alt="GitHub Release" src="https://img.shields.io/github/v/release/vivanotica/logseq-timestamp"> <img alt="GitHub License" src="https://img.shields.io/github/license/vivanotica/logseq-timestamp"> <img alt="GitHub Downloads (all assets, all releases)" src="https://img.shields.io/github/downloads/vivanotica/logseq-timestamp/total">
 
 A small plugin for Logseq DB that shows when each block was created in journal page.
 
